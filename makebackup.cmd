@@ -5,15 +5,25 @@
 ::   ">NUL 2>&1"    -- hide output
 
 :: Hide prompt and set title
-@ECHO OFF 
+@ECHO OFF
 title Backup
 
-:: Script name
-SET me=%~n0
+:: Script name with extension
+SET me=%~nx0
 :: Script location
 SET parent=%~dp0
 :: Change dir to script location
-cd /d %parent%
+:: cd /d %parent%
+
+:: Check if run from explorer by double click
+::SET interactive=0
+::ECHO %CMDCMDLINE% | FINDSTR /L %COMSPEC% >NUL 2>&1
+::IF %ERRORLEVEL% == 0 SET interactive=1
+
+:: Second var
+SET interactive=1
+ECHO %CMDCMDLINE% | FIND /I "/c" >NUL 2>&1
+IF %ERRORLEVEL% == 0 SET interactive=0
 
 :: Check if we are elevated to Administrator, if not - exiting
 net session >nul 2>&1
@@ -21,38 +31,50 @@ if %errorLevel% == 0 (
     echo Success: Administrative permissions confirmed.
 ) else (
     echo Failure: Need Administrative permissions.
-    echo Running with elevate.cmd
-    echo(
+    IF "%interactive%"=="1" (
+        exit /B 0
+    )
+    :: 0C -- Light Red text
+    color 0C
+    echo Rerunning with elevated shell...
 
-    :: Create elevate.cmd
-    echo @echo off > elevate.cmd
-    echo title Elevation >> elevate.cmd
-    echo cd /d %%~dp0 >> elevate.cmd
-    echo powershell.exe -command "Start-Process makebackup.cmd -Verb runas" >> elevate.cmd
-    echo start ^/b ^"^" ^cmd ^/c ^del ^"%%~f0^"^&exit /b >> elevate.cmd
-    echo ^(goto^) 2^>nul ^& ^del ^"%%~f0^" >> elevate.cmd
-
-    call elevate.cmd
+    :: Run in elevated window (UAC will ask for access) and exit
+    powershell.exe -command "Start-Process %parent%%me% -Verb runas"
     exit /B 0
 )
 
-:: Check if run from explorer by double click
-SET interactive=0
-ECHO %CMDCMDLINE% | FINDSTR /L %COMSPEC% >NUL 2>&1
-IF %ERRORLEVEL% == 0 SET interactive=1
-
-:: Second var
-::   SET interactive=1
-::   ECHO %CMDCMDLINE% | FIND /I "/c" >NUL 2>&1
-::   IF %ERRORLEVEL% == 0 SET interactive=0
+if "%~1"=="" (
+    goto :askpath
+) else (
+    set backup=%~1
+    goto :endaskpath
+)
 
 :: Ask for backup path and update title accordingly
+:askpath
 echo(
 set /p backup="Enter backup path: "
+
+if "%backup%"=="" (
+    setlocal enableDelayedExpansion
+    IF "%interactive%"=="1" (
+        set backup=%cd%
+    ) else (
+        set backup=%parent%
+    )
+    echo Set to !backup!
+    setlocal disableDelayedExpansion
+)
+:endaskpath
+
+:: Remove trailing backslash from path
+IF %backup:~-1%==\ SET backup=%backup:~0,-1%
+
 set backup=%backup%\backup-%date%
 title Backuping to %backup%
+:: Yellow text
 color 06
-mkdir %backup%
+mkdir %backup% >NUL 2>&1
 
 :: Backup projects
 echo(
@@ -77,7 +99,6 @@ echo(
 xcopy %localappdata%\Google\Chrome %backup%\Chrome\ /Y /E /Q
 
 if /I %errorLevel% NEQ 0 (
-
     setlocal enableDelayedExpansion
 	echo Close Google Chrome to continue
 
@@ -130,16 +151,19 @@ xcopy %userprofile%\.gitconfig %backup%\* /Y /Q
 xcopy "C:\Program Files (x86)\Steam\skins" %backup%\skins\ /Y /E /Q
 
 :: Allow to restore copy
-xcopy ".\restore.cmd" "%backup%\*" /Y /Q >nul 2>&1
+xcopy "%parent%restore.cmd" "%backup%\*" /Y /Q >nul 2>&1
 
 :: If run from explorer by double click ask to press eny key
 :: Else just quit without prompt
 echo(
-echo Done!
+echo Done^!
 IF "%interactive%"=="0" (
+    :: Light Green text
     color 0A
     PAUSE
 )
+color
+endlocal
 EXIT /B 0
 
 
