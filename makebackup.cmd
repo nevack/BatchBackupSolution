@@ -8,14 +8,32 @@
 @ECHO OFF 
 title Backup
 
+:: Script name
+SET me=%~n0
+:: Script location
+SET parent=%~dp0
+:: Change dir to script location
+cd /d %parent%
+
 :: Check if we are elevated to Administrator, if not - exiting
 net session >nul 2>&1
 if %errorLevel% == 0 (
     echo Success: Administrative permissions confirmed.
 ) else (
-    echo Failure: Need Administrative permissions. Exiting...
-    pause >nul
-    exit /B 1
+    echo Failure: Need Administrative permissions.
+    echo Running with elevate.cmd
+    echo(
+
+    :: Create elevate.cmd
+    echo @echo off > elevate.cmd
+    echo title Elevation >> elevate.cmd
+    echo cd /d %%~dp0 >> elevate.cmd
+    echo powershell.exe -command "Start-Process makebackup.cmd -Verb runas" >> elevate.cmd
+    echo start ^/b ^"^" ^cmd ^/c ^del ^"%%~f0^"^&exit /b >> elevate.cmd
+    echo ^(goto^) 2^>nul ^& ^del ^"%%~f0^" >> elevate.cmd
+
+    call elevate.cmd
+    exit /B 0
 )
 
 :: Check if run from explorer by double click
@@ -28,20 +46,12 @@ IF %ERRORLEVEL% == 0 SET interactive=1
 ::   ECHO %CMDCMDLINE% | FIND /I "/c" >NUL 2>&1
 ::   IF %ERRORLEVEL% == 0 SET interactive=0
 
-:: Script name
-SET me=%~n0
-:: Script location
-SET parent=%~dp0
-
 :: Ask for backup path and update title accordingly
 echo(
 set /p backup="Enter backup path: "
 set backup=%backup%\backup-%date%
 title Backuping to %backup%
 color 06
-
-:: Change dir to script location
-cd /d %parent%
 mkdir %backup%
 
 :: Backup projects
